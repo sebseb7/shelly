@@ -192,6 +192,18 @@ HTTPServer.registerEndpoint('', function (req, res) {
     res.send();
 });
 
+// Endpoint to get current state as JSON
+HTTPServer.registerEndpoint('getstate', function (req, res) {
+    res.code = 200;
+    res.headers = [["Content-Type", "application/json"]];
+    res.body = JSON.stringify({
+        duration: duration,
+        valveIp: valveIp,
+        isLearning: isLearning
+    });
+    res.send();
+});
+
 // Endpoint to set duration (updates both in-memory and KVS)
 HTTPServer.registerEndpoint('setduration', function (req, res) {
     // Parse query string (format: "ms=12345")
