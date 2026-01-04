@@ -112,15 +112,33 @@ Shelly.call("KVS.Get", { key: "valveIp" }, function (result, error_code, error_m
 Shelly.call("Switch.Set", { id: 1, on: true });
 setValve(false);
 
+// Check KVS every 5 seconds for duration changes
+Timer.set(5000, true, function () {
+    Shelly.call("KVS.Get", { key: "duration" }, function (result, error_code, error_message) {
+        if (error_code === 0 && result && result.value) {
+            if (result.value !== duration) {
+                duration = result.value;
+                print("Duration updated from KVS: " + duration + "ms");
+            }
+        }
+    });
+});
+
 HTTPServer.registerEndpoint('', function (req, res) {
     let durationSec = duration / 1000;
     res.code = 200;
     res.headers = [["Content-Type", "text/html"]];
-    res.body = '<!DOCTYPE html><html><head><title>Valve Timer</title></head><body>' +
+    res.body = '<!DOCTYPE html><html><head><title>Valve Timer</title>' +
+        '<script>if(\"wakeLock\"in navigator){navigator.wakeLock.request(\"screen\").catch(function(){});}</script>' +
+        '</head><body>' +
         '<h2>Valve Timer State</h2>' +
-        '<p><b>Duration:</b> ' + durationSec + ' seconds</p>' +
-        '<p><b>Valve IP:</b> ' + (valveIp || 'not set') + '</p>' +
-        '<p><b>Learning:</b> ' + (isLearning ? 'yes' : 'no') + '</p>' +
+        '<p><b>Duration:</b> <span id="durationDisplay">' + durationSec + '</span> seconds</p>' +
+        '<p><b>Valve IP:</b> <span id="valveIpDisplay">' + (valveIp || 'not set') + '</span></p>' +
+        '<p><b>Learning:</b> <span id="learningDisplay">' + (isLearning ? 'yes' : 'no') + '</span></p>' +
+        '<hr>' +
+        '<h3>Settings</h3>' +
+        '<label>Valve IP: <input type="text" id="valveIpInput" value="' + (valveIp || '') + '"></label> ' +
+        '<button onclick="setValveIp()">Save</button>' +
         '<hr>' +
         '<h3>Step 1: Calculate Flow Rate</h3>' +
         '<label>Liters during duration: <input type="number" id="liters" step="0.1" oninput="calc()"></label>' +
@@ -152,11 +170,78 @@ HTTPServer.registerEndpoint('', function (req, res) {
         'var desired=parseFloat(document.getElementById("desiredLiters").value)||0;' +
         'if(lph<=0){alert("Calculate flow rate first");return;}' +
         'var ms=Math.round(desired*3600000/lph);' +
-        'fetch("/rpc/KVS.Set?key=duration&value="+ms)' +
-        '.then(function(){document.getElementById("status").innerText="Duration set to "+ms+"ms. Reload page.";})' +
+        'fetch("/script/1/setduration?ms="+ms)' +
+        '.then(function(){location.reload();})' +
         '.catch(function(e){document.getElementById("status").innerText="Error: "+e;});' +
         '}' +
+        'function setValveIp(){' +
+        'var ip=document.getElementById("valveIpInput").value;' +
+        'fetch("/script/1/setvalveip?ip="+encodeURIComponent(ip))' +
+        '.then(function(){location.reload();})' +
+        '.catch(function(e){alert("Error: "+e);});' +
+        '}' +
+        'setInterval(function(){' +
+        'fetch("/script/1/getstate").then(function(r){return r.json();}).then(function(d){' +
+        'document.getElementById("durationDisplay").innerText=d.duration/1000;' +
+        'document.getElementById("valveIpDisplay").innerText=d.valveIp||"not set";' +
+        'document.getElementById("learningDisplay").innerText=d.isLearning?"yes":"no";' +
+        '}).catch(function(){});' +
+        '},5000);' +
         '</script>' +
         '</body></html>';
+    res.send();
+});
+
+// Endpoint to set duration (updates both in-memory and KVS)
+HTTPServer.registerEndpoint('setduration', function (req, res) {
+    // Parse query string (format: "ms=12345")
+    let newDuration = 0;
+    if (req.query) {
+        let parts = req.query.split('&');
+        for (let i = 0; i < parts.length; i++) {
+            let kv = parts[i].split('=');
+            if (kv[0] === 'ms') {
+                newDuration = parseInt(kv[1]);
+                break;
+            }
+        }
+    }
+
+    if (!isNaN(newDuration) && newDuration > 0) {
+        duration = newDuration;
+        Shelly.call("KVS.Set", { key: "duration", value: newDuration });
+        res.code = 200;
+        res.body = "OK: duration set to " + newDuration + "ms";
+    } else {
+        res.code = 400;
+        res.body = "Invalid or missing ms parameter";
+    }
+    res.send();
+});
+
+// Endpoint to set valve IP (updates both in-memory and KVS)
+HTTPServer.registerEndpoint('setvalveip', function (req, res) {
+    // Parse query string (format: "ip=192.168.1.100")
+    let newIp = null;
+    if (req.query) {
+        let parts = req.query.split('&');
+        for (let i = 0; i < parts.length; i++) {
+            let kv = parts[i].split('=');
+            if (kv[0] === 'ip') {
+                newIp = kv[1];
+                break;
+            }
+        }
+    }
+
+    if (newIp && newIp.length > 0) {
+        valveIp = newIp;
+        Shelly.call("KVS.Set", { key: "valveIp", value: newIp });
+        res.code = 200;
+        res.body = "OK: valve IP set to " + newIp;
+    } else {
+        res.code = 400;
+        res.body = "Invalid or missing ip parameter";
+    }
     res.send();
 });
