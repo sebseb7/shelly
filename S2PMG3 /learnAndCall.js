@@ -4,6 +4,7 @@ let startTime = 0;
 let callTimer = null;
 let valveIp = null;
 let valveLastSeen = 0;
+let valveFirstRegister = true;
 
 // HTTP request lock
 let httpBusy = false;
@@ -55,7 +56,7 @@ Shelly.addEventHandler(function (e) {
         } else {
             // Second press: stop learning, turn light ON, valve OFF, calculate duration
             isLearning = false;
-            duration = Date.now() - startTime;
+            duration = Math.round((Date.now() - startTime) / 100) * 100;
             Shelly.call("Switch.Set", { id: 1, on: true });
             setValve(false);
             // Save duration to persistent storage
@@ -196,7 +197,7 @@ HTTPServer.registerEndpoint('api', function (req, res) {
             res.body = "Learning started";
         } else {
             isLearning = false;
-            duration = Date.now() - startTime;
+            duration = Math.round((Date.now() - startTime) / 100) * 100;
             Shelly.call("Switch.Set", { id: 1, on: true });
             setValve(false);
             Shelly.call("KVS.Set", { key: "duration", value: duration });
@@ -216,6 +217,16 @@ HTTPServer.registerEndpoint('api', function (req, res) {
         valveIp = params.v;
         valveLastSeen = Date.now();
         Shelly.call("KVS.Set", { key: "valveIp", value: params.v });
+        // Flicker 3x on first registration only, if not learning or call active
+        if (valveFirstRegister && !isLearning && callTimer === null) {
+            valveFirstRegister = false;
+            let count = 0;
+            let flickerTimer = Timer.set(400, true, function () {
+                count++;
+                Shelly.call("Switch.Set", { id: 1, on: count % 2 === 0 });
+                if (count >= 6) Timer.clear(flickerTimer);
+            });
+        }
         res.body = "OK";
     } else {
         res.code = 400;
