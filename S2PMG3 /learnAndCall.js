@@ -148,17 +148,20 @@ HTTPServer.registerEndpoint('', function (req, res) {
         '<h2>Valve Timer</h2>' +
         '<p>Duration: <b id=d>' + s.toFixed(1) + '</b>s | IP: <b id=v>' + (valveIp || '-') + '</b> (seen: <span id=T>' + (valveLastSeen > 0 ? Math.round((Date.now() - valveLastSeen) / 60000) : '-') + '</span>m) | Learn: <b id=L>' + (isLearning ? 'Y' : 'N') + '</b></p>' +
         '<button class=r onclick="f(1)">Run ' + s.toFixed(1) + 's</button>' +
+        '<p id=cd style="font-size:24px;text-align:center;color:#850;display:none"></p>' +
         '<h3>Flow Calc</h3>' +
         '<p>Liters: <input id=i oninput=C()> = <span id=R>--</span> L/h</p>' +
         '<h3>Set Liters</h3>' +
         '<p>Want: <input id=w oninput=D()> = <span id=N>--</span>s</p>' +
         '<button onclick=S()>Set</button><span id=E></span>' +
         '<h3>Settings</h3>' +
+        '<p>Seconds: <input id=X type=number step=0.1 value="' + s + '"><button onclick="f(4)">Set</button></p>' +
         '<p>IP: <input id=P value="' + (valveIp || '') + '"><button onclick="f(3)">Save</button></p>' +
         '<p>' + (isLearning ? '<button class=l onclick="f(2)">Stop</button>' : '<button class=l onclick="if(confirm(String.fromCharCode(83,116,97,114,116,63)))f(2)">Learn</button>') + '</p>' +
         '<script>' +
-        'var p=0,s=' + s + ',A="/script/1/api?a=";' +
-        'function f(n){var u=n==1?"call":n==2?"learn":"setip&v="+P.value;fetch(A+u).then(function(){location.reload()})}' +
+        'var p=0,s=' + s + ',A="/script/1/api?a=",ct=0,ci;' +
+        'function f(n){var u=n==1?"call":n==2?"learn":n==3?"setip&v="+P.value:"setms&v="+Math.round(X.value*1000);if(n==1){ct=s;cd.style.display="block";U();ci=setInterval(U,100)}fetch(A+u).then(function(){if(n!=1)location.reload()})}' +
+        'function U(){ct-=0.1;if(ct<=0){clearInterval(ci);cd.style.display="none";ct=0}else{cd.innerText=ct.toFixed(1)+"s remaining"}}' +
         'function C(){var l=+i.value||0;p=l*3600/s;R.innerText=p.toFixed(1)}' +
         'function D(){if(p>0)N.innerText=(+w.value*3600/p).toFixed(1)}' +
         'function S(){if(p<=0)return alert("Calc first");fetch(A+"setms&v="+Math.round(+w.value*3600000/p)).then(function(){location.reload()})}' +
